@@ -1,0 +1,75 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Dependencies
+```{r}
+library(Seurat)
+library(spacexr)
+library(tidyverse)
+source("~/Projects/touchstone/notebooks/utils.R")
+```
+
+# Load data
+```{r}
+sample_meta <- data.frame(
+  sample_id = c("Xen_PCa_9224", "CosMx_PCa_9224"),
+  path = c(
+    "/Volumes/Charmander/spatial_data/new_data/Xenium_Prostate_9224_Rep1/",
+    "/Volumes/Charmander/spatial_data/new_data/CosMx_Prostate_9224_Rep1/"
+  ),
+  platform = c("Xenium", "CosMx")
+)
+```
+
+```{r}
+obj_list <- list()
+for(i in 1:nrow(sample_meta)){
+  obj_list[[i]] <- readSpatial(sample_id = sample_meta[i, "sample_id"],
+                               path = sample_meta[i, "path"],
+                               platform = sample_meta[i, "platform"])
+}
+
+ref <- readRDS("~/Projects/spatial_comparison/output/snPATHO_processed.rds")
+Idents(ref) <- ref$celltype
+ref$cell_type <- ref$celltype
+ref$cell_type[ref$cell_type == "T/NK cell"] <- "T_NK"
+ref$cell_type <- factor(ref$cell_type)
+```
+
+# Annotate
+```{r}
+## Annotate
+obj_list <- lapply(obj_list, annotateData, ref = ref)
+```
+
+#  Example: Biology metrics
+```{r}
+ref_cor <- do.call(rbind, lapply(obj_list, getCorrelationExp, ref = ref))
+celltype_cor <- do.call(rbind, lapply(obj_list, getCellTypeCor, ref = ref))
+celltype_prop <- do.call(rbind, lapply(obj_list, getCellTypeProportion, ref=ref))
+cluster_metrics <- do.call(rbind, lapply(obj_list, getClusterMetrics))
+rctd <- do.call(rbind, lapply(obj_list, getMaxRCTD, ref = ref))
+```
+
+
+```{r}
+p0 <- plotSampleLabel(sample_meta)
+p1 <- plotCorrelation(ref_cor)
+p2 <- plotCellTypeCor(celltype_cor)
+p3 <- plotCellTypeProportion(celltype_prop)
+p4 <- plotARI(cluster_metrics)
+p5 <- plotNMI(cluster_metrics)
+p6 <- plotRCTD(rctd)
+```
+
+```{r}
+p <- cowplot::plot_grid(p0, p1, p2, p3, p4, p5, p6,
+                        rel_widths = c(1, 1, 0.75, 1.25, 0.5, 0.5, 1),
+                        ncol=7, align='h', axis='bt')
+cowplot::save_plot(p,
+                   filename="../figs/bio_metrics2.pdf",
+                   base_width=10, base_height=2)
+```
+
